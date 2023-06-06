@@ -15,15 +15,6 @@ amount of IOPS. You can ask it to take however much time it needs but not
 use more than 100 IOPS, and it will do that. We do not necessarily need very
 up to date directory size metrics, so this is ok.
 
-## Limitations
-
-- As directory contents might change in the course of a single run as we wait
-  for budgets to become available, information about a directory may not be
-  exactly correct immediately.
-- Because we do not spread the IOPS through time, the IO usage is 'spiky' -
-  all IOPS get done at the beginning of a second, and then it goes silent.
-  If you have a big IOPS budget, this can cause performance degradation.
-
 ## Installation
 
 Install the package from PyPI:
@@ -50,4 +41,22 @@ dirsize-exporter /home 200 60
 You can check out the metrics by hitting `http://localhost:8000`. The port can
 be controlled via a `--port` argument.
 
+## Metrics recorded
 
+The following metrics are recorded for all top level subidrectories of the
+parent directory:
+
+- Total Size (in bytes)
+- Last Modified (including all the descendents)
+- Total Number of Entries (Files, directories & symlinks)
+- Processing Time required to gather this information
+- Last updated
+
+## Limitations
+
+- As directory contents might change in the course of a single run as we wait
+  for budgets to become available, information about a directory may not be
+  exactly correct immediately.
+- Because we do not spread the IOPS through time, the IO usage is 'spiky' -
+  all IOPS get done at the beginning of a second, and then it goes silent.
+  If you have a big IOPS budget, this can cause performance degradation.
