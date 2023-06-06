@@ -1,6 +1,7 @@
 import os
 import time
 import argparse
+from typing import Optional
 from collections import namedtuple
 from prometheus_client import start_http_server
 from . import metrics
@@ -50,9 +51,13 @@ class BudgetedDirInfoWalker:
         self._io_calls_since_last_reset += 1
         return return_value
 
-    def get_dir_info(self, path: str) -> DirInfo:
+    def get_dir_info(self, path: str) -> Optional[DirInfo]:
         start_time = time.monotonic()
-        self_statinfo = os.stat(path)
+        try:
+            self_statinfo = os.stat(path)
+        except FileNotFoundError:
+            # Directory was deleted from the time it was listed and now
+            return None
 
         # Get absolute path of all children of directory
         children = [
@@ -77,13 +82,21 @@ class BudgetedDirInfoWalker:
         for f in files:
             # Do not follow symlinks, as that may lead to double counting a symlinked
             # file's size.
-            stat_info = self.do_iops_action(os.stat, f, follow_symlinks=False)
+            try:
+                stat_info = self.do_iops_action(os.stat, f, follow_symlinks=False)
+            except FileNotFoundError:
+                # File might have been deleted from the time we listed it anda now
+                continue
             total_size += stat_info.st_size
             if latest_mtime < stat_info.st_mtime:
                 latest_mtime = stat_info.st_mtime
 
         for d in dirs:
             dirinfo = self.get_dir_info(d)
+            if dirinfo is None:
+                # The directory was deleted between the time the listing
+                # was done and now.
+                continue
             total_size += dirinfo.size
             entries_count += dirinfo.entries_count
             if latest_mtime < dirinfo.latest_mtime:
