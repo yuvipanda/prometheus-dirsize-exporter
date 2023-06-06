@@ -5,7 +5,9 @@ from collections import namedtuple
 from prometheus_client import start_http_server
 from . import metrics
 
-DirInfo = namedtuple("DirInfo", ["path", "size", "latest_mtime", "entries_count", "processing_time"])
+DirInfo = namedtuple(
+    "DirInfo", ["path", "size", "latest_mtime", "entries_count", "processing_time"]
+)
 
 ONE_S_IN_NS = 1_000_000_000
 
@@ -87,7 +89,13 @@ class BudgetedDirInfoWalker:
             if latest_mtime < dirinfo.latest_mtime:
                 latest_mtime = dirinfo.latest_mtime
 
-        return DirInfo(path, total_size, latest_mtime, entries_count, time.monotonic() - start_time)
+        return DirInfo(
+            os.path.basename(path),
+            total_size,
+            latest_mtime,
+            entries_count,
+            time.monotonic() - start_time,
+        )
 
     def get_subdirs_info(self, dir_path):
         children = [
@@ -108,20 +116,15 @@ def main():
         help="The directory to whose subdirectories will have their information exported",
     )
     argparser.add_argument(
-        'iops_budget',
-        help="Number of IO operations allowed per second",
-        type=int
+        "iops_budget", help="Number of IO operations allowed per second", type=int
     )
     argparser.add_argument(
         "wait_time_minutes",
         help="Number of minutes to wait before data collection runs",
-        type=int
+        type=int,
     )
     argparser.add_argument(
-        "--port",
-        help="Port for the server to listen on",
-        type=int,
-        default=8000
+        "--port", help="Port for the server to listen on", type=int, default=8000
     )
 
     args = argparser.parse_args()
@@ -132,11 +135,16 @@ def main():
         for subdir_info in walker.get_subdirs_info(args.parent_dir):
             metrics.TOTAL_SIZE.labels(subdir_info.path).set(subdir_info.size)
             metrics.LATEST_MTIME.labels(subdir_info.path).set(subdir_info.latest_mtime)
-            metrics.ENTRIES_COUNT.labels(subdir_info.path).set(subdir_info.entries_count)
-            metrics.PROCESSING_TIME.labels(subdir_info.path).set(subdir_info.processing_time)
+            metrics.ENTRIES_COUNT.labels(subdir_info.path).set(
+                subdir_info.entries_count
+            )
+            metrics.PROCESSING_TIME.labels(subdir_info.path).set(
+                subdir_info.processing_time
+            )
             metrics.LAST_UPDATED.labels(subdir_info.path).set(time.time())
             print(f"Updated values for {subdir_info.path}")
         time.sleep(args.wait_time_minutes * 60)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
