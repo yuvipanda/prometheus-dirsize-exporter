@@ -1,5 +1,7 @@
 # prometheus-dirsize-exporter
 
+[![PyPI version](https://badge.fury.io/py/prometheus-dirsize-exporter.svg)](https://badge.fury.io/py/prometheus-dirsize-exporter)
+
 Export directory size metrics efficiently.
 
 ## Why?
