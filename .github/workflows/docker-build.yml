@@ -1,9 +1,11 @@
 name: docker-build
 
 on:
+  pull_request:
   push:
     branches:
       - 'main'
+    tags: ["**"]
 
 jobs:
   docker:
