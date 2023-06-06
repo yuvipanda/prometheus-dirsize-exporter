@@ -2,7 +2,7 @@ import os
 import time
 from collections import namedtuple
 
-DirInfo = namedtuple("DirInfo", ["size", "latest_mtime"])
+DirInfo = namedtuple("DirInfo", ["size", "latest_mtime", "entries_count"])
 
 ONE_S_IN_NS = 1_000_000_000
 
@@ -63,6 +63,7 @@ class BudgetedDirInfoWalker:
 
         total_size = self_statinfo.st_size
         latest_mtime = self_statinfo.st_mtime
+        entries_count = len(files) + 1 # Include this directory as an entry
 
         for f in files:
             # Do not follow symlinks, as that may lead to double counting a symlinked
@@ -75,10 +76,11 @@ class BudgetedDirInfoWalker:
         for d in dirs:
             dirinfo = self.get_dir_info(d)
             total_size += dirinfo.size
+            entries_count += dirinfo.entries_count
             if latest_mtime < dirinfo.latest_mtime:
                 latest_mtime = dirinfo.latest_mtime
 
-        return DirInfo(total_size, latest_mtime)
+        return DirInfo(total_size, latest_mtime, entries_count)
 
 d = BudgetedDirInfoWalker(10)
 print(d.get_dir_info("."))
