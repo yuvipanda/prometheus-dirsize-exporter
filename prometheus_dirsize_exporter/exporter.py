@@ -1,10 +1,14 @@
 import os
 import time
+import argparse
 from collections import namedtuple
+from prometheus_client import start_http_server
+from . import metrics
 
-DirInfo = namedtuple("DirInfo", ["size", "latest_mtime", "entries_count"])
+DirInfo = namedtuple("DirInfo", ["path", "size", "latest_mtime", "entries_count", "processing_time"])
 
 ONE_S_IN_NS = 1_000_000_000
+
 
 class BudgetedDirInfoWalker:
     def __init__(self, iops_budget=100):
@@ -33,7 +37,9 @@ class BudgetedDirInfoWalker:
             # We are over budget, so we wait for 1s + 1ns since last reset
             # IO can be performed once this is wait is done. We reset the budget clock
             # after our wait.
-            wait_period_in_s = (ONE_S_IN_NS - (time.monotonic_ns() - self._last_iops_reset_time) + 1) / ONE_S_IN_NS
+            wait_period_in_s = (
+                ONE_S_IN_NS - (time.monotonic_ns() - self._last_iops_reset_time) + 1
+            ) / ONE_S_IN_NS
             time.sleep(wait_period_in_s)
             self._io_calls_since_last_reset = 0
             self._last_iops_reset_time = time.monotonic_ns()
@@ -43,6 +49,7 @@ class BudgetedDirInfoWalker:
         return return_value
 
     def get_dir_info(self, path: str) -> DirInfo:
+        start_time = time.monotonic()
         self_statinfo = os.stat(path)
 
         # Get absolute path of all children of directory
@@ -63,7 +70,7 @@ class BudgetedDirInfoWalker:
 
         total_size = self_statinfo.st_size
         latest_mtime = self_statinfo.st_mtime
-        entries_count = len(files) + 1 # Include this directory as an entry
+        entries_count = len(files) + 1  # Include this directory as an entry
 
         for f in files:
             # Do not follow symlinks, as that may lead to double counting a symlinked
@@ -80,7 +87,56 @@ class BudgetedDirInfoWalker:
             if latest_mtime < dirinfo.latest_mtime:
                 latest_mtime = dirinfo.latest_mtime
 
-        return DirInfo(total_size, latest_mtime, entries_count)
+        return DirInfo(path, total_size, latest_mtime, entries_count, time.monotonic() - start_time)
 
-d = BudgetedDirInfoWalker(10)
-print(d.get_dir_info("."))
+    def get_subdirs_info(self, dir_path):
+        children = [
+            os.path.abspath(os.path.join(dir_path, c))
+            for c in self.do_iops_action(os.listdir, dir_path)
+        ]
+
+        dirs = [c for c in children if self.do_iops_action(os.path.isdir, c)]
+
+        for c in dirs:
+            yield self.get_dir_info(c)
+
+
+def main():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument(
+        "parent_dir",
+        help="The directory to whose subdirectories will have their information exported",
+    )
+    argparser.add_argument(
+        'iops_budget',
+        help="Number of IO operations allowed per second",
+        type=int
+    )
+    argparser.add_argument(
+        "wait_time_minutes",
+        help="Number of minutes to wait before data collection runs",
+        type=int
+    )
+    argparser.add_argument(
+        "--port",
+        help="Port for the server to listen on",
+        type=int,
+        default=8000
+    )
+
+    args = argparser.parse_args()
+
+    start_http_server(args.port)
+    while True:
+        walker = BudgetedDirInfoWalker(args.iops_budget)
+        for subdir_info in walker.get_subdirs_info(args.parent_dir):
+            metrics.TOTAL_SIZE.labels(subdir_info.path).set(subdir_info.size)
+            metrics.LATEST_MTIME.labels(subdir_info.path).set(subdir_info.latest_mtime)
+            metrics.ENTRIES_COUNT.labels(subdir_info.path).set(subdir_info.entries_count)
+            metrics.PROCESSING_TIME.labels(subdir_info.path).set(subdir_info.processing_time)
+            metrics.LAST_UPDATED.labels(subdir_info.path).set(time.time())
+            print(f"Updated values for {subdir_info.path}")
+        time.sleep(args.wait_time_minutes * 60)
+
+if __name__ == '__main__':
+    main()
