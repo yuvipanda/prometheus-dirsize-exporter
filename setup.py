@@ -5,7 +5,7 @@ with open("README.md") as f:
 
 setup(
     name="prometheus-dirsize-exporter",
-    version="1.2",
+    version="2.0",
     packages=find_packages(),
     license="3-BSD",
     long_description=long_description,
