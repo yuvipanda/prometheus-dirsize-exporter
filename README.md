@@ -52,6 +52,10 @@ parent directory:
 - Last Modified (including all the descendents)
 - Total Number of Entries (Files, directories & symlinks)
 - Processing Time required to gather this information
+  This is only reported if `--enable-detailed-processing-time-metric` flag is
+  passed, to prevent possible explosion of stored size of prometheus metrics
+  when collected. This information is also not particularly useful outside
+  of debugging this exporter, and as it varies each run, compresses poorly.
 - Last updated
 
 ## Limitations

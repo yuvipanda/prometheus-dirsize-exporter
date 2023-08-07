@@ -136,6 +136,15 @@ def main():
         help="Number of minutes to wait before data collection runs",
         type=int,
     )
+    # Don't report amount of time it took to process each directory by
+    # default. This is highly variable, and probably causes prometheus to
+    # not compress metrics very well. Not particularly useful outside of
+    # debugging the exporter itself.
+    argparser.add_argument(
+        "--enable-detailed-processing-time-metric",
+        help="Report amount of time it took to process each directory",
+        action="store_true"
+    )
     argparser.add_argument(
         "--port", help="Port for the server to listen on", type=int, default=8000
     )
@@ -151,9 +160,10 @@ def main():
             metrics.ENTRIES_COUNT.labels(subdir_info.path).set(
                 subdir_info.entries_count
             )
-            metrics.PROCESSING_TIME.labels(subdir_info.path).set(
-                subdir_info.processing_time
-            )
+            if args.enable_detailed_processing_time_metric:
+                metrics.PROCESSING_TIME.labels(subdir_info.path).set(
+                    subdir_info.processing_time
+                )
             metrics.LAST_UPDATED.labels(subdir_info.path).set(time.time())
             print(f"Updated values for {subdir_info.path}")
         time.sleep(args.wait_time_minutes * 60)
