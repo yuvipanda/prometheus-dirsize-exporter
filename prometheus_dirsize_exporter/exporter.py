@@ -111,16 +111,36 @@ class BudgetedDirInfoWalker:
         )
 
     def get_subdirs_info(self, dir_path):
-        children = [
-            os.path.abspath(os.path.join(dir_path, c))
-            for c in self.do_iops_action(os.listdir, dir_path)
-        ]
+        try:
+            children = [
+                os.path.abspath(os.path.join(dir_path, c))
+                for c in self.do_iops_action(os.listdir, dir_path)
+            ]
 
-        dirs = [c for c in children if self.do_iops_action(os.path.isdir, c)]
+            dirs = [c for c in children if self.do_iops_action(os.path.isdir, c)]
 
-        for c in dirs:
-            yield self.get_dir_info(c)
-
+            for c in dirs:
+                yield self.get_dir_info(c)
+        except OSError as e:
+            if e.errno == 116:
+                # See https://github.com/yuvipanda/prometheus-dirsize-exporter/issues/6
+                # Stale file handle, often because the file we were looking at
+                # changed in the NFS server via another client in such a way that
+                # a new inode was created. This is a race, so let's just ignore and
+                # not report any data for this file. If this file was recreated,
+                # our next run should catch it
+                return None
+            # Any other errors should just be propagated
+            raise
+        except PermissionError as e:
+            if e.errno == 13:
+                # See https://github.com/yuvipanda/prometheus-dirsize-exporter/issues/5
+                # A file we are trying to open is owned in such a way that we don't have
+                # access to it. Ideally this should not really happen, but when it does,
+                # we just ignore it and continue.
+                return None
+            # Any other permission error should be propagated
+            raise
 
 def main():
     argparser = argparse.ArgumentParser()
