@@ -17,6 +17,13 @@ LATEST_MTIME = Gauge(
     labelnames=("directory",)
 )
 
+OLDEST_MTIME = Gauge(
+    "oldest_mtime",
+    "Oldest modified file in the directory (as unix timestamp)",
+    namespace=NAMESPACE,
+    labelnames=("directory",)
+)
+
 ENTRIES_COUNT = Gauge(
     "entries_count",
     "Total number of entries (files, directories & links) in the directory",
