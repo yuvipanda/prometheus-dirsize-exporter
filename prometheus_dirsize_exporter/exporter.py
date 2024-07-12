@@ -7,7 +7,7 @@ from prometheus_client import start_http_server
 from . import metrics
 
 DirInfo = namedtuple(
-    "DirInfo", ["path", "size", "latest_mtime", "entries_count", "processing_time"]
+    "DirInfo", ["path", "size", "latest_mtime", "oldest_mtime", "entries_count", "processing_time"]
 )
 
 ONE_S_IN_NS = 1_000_000_000
@@ -77,6 +77,7 @@ class BudgetedDirInfoWalker:
 
         total_size = self_statinfo.st_size
         latest_mtime = self_statinfo.st_mtime
+        oldest_mtime = self_statinfo.st_mtime
         entries_count = len(files) + 1  # Include this directory as an entry
 
         for f in files:
@@ -90,6 +91,8 @@ class BudgetedDirInfoWalker:
             total_size += stat_info.st_size
             if latest_mtime < stat_info.st_mtime:
                 latest_mtime = stat_info.st_mtime
+            if oldest_mtime > stat_info.st_mtime:
+                oldest_mtime = stat_info.st_mtime
 
         for d in dirs:
             dirinfo = self.get_dir_info(d)
@@ -101,11 +104,14 @@ class BudgetedDirInfoWalker:
             entries_count += dirinfo.entries_count
             if latest_mtime < dirinfo.latest_mtime:
                 latest_mtime = dirinfo.latest_mtime
+            if oldest_mtime > dirinfo.latest_mtime:
+                oldest_mtime = dirinfo.latest_mtime
 
         return DirInfo(
             os.path.basename(path),
             total_size,
             latest_mtime,
+            oldest_mtime,
             entries_count,
             time.monotonic() - start_time,
         )
@@ -177,6 +183,7 @@ def main():
         for subdir_info in walker.get_subdirs_info(args.parent_dir):
             metrics.TOTAL_SIZE.labels(subdir_info.path).set(subdir_info.size)
             metrics.LATEST_MTIME.labels(subdir_info.path).set(subdir_info.latest_mtime)
+            metrics.OLDEST_MTIME.labels(subdir_info.path).set(subdir_info.oldest_mtime)
             metrics.ENTRIES_COUNT.labels(subdir_info.path).set(
                 subdir_info.entries_count
             )
