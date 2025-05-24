@@ -1,20 +1,28 @@
 import os
 import time
 import argparse
-from typing import Optional
-from collections import namedtuple
+from typing import Callable, Never, Optional, Generator
 from prometheus_client import start_http_server
 from . import metrics
+from dataclasses import dataclass
 
-DirInfo = namedtuple(
-    "DirInfo", ["path", "size", "latest_mtime", "oldest_mtime", "entries_count", "processing_time"]
-)
+type Timestamp = float
+type Seconds = float
+
+@dataclass
+class DirInfo:
+    path: str
+    size: int
+    latest_mtime: Timestamp
+    oldest_mtime: Timestamp
+    entries_count: int
+    processing_time: Seconds
 
 ONE_S_IN_NS = 1_000_000_000
 
 
 class BudgetedDirInfoWalker:
-    def __init__(self, iops_budget=100):
+    def __init__(self, iops_budget: int=100):
         """
         iops_budget is number of io operations allowed every second.
         """
@@ -23,7 +31,7 @@ class BudgetedDirInfoWalker:
         self._last_iops_reset_time = time.monotonic_ns()
         self._io_calls_since_last_reset = 0
 
-    def do_iops_action(self, func, *args, **kwargs):
+    def do_iops_action[R, **P](self, func: Callable[P, R], *args, **kwargs) -> R:
         """
         Perform an action that does IO, waiting if necessary so it is within budget.
 
@@ -108,15 +116,15 @@ class BudgetedDirInfoWalker:
                 oldest_mtime = dirinfo.latest_mtime
 
         return DirInfo(
-            os.path.basename(path),
-            total_size,
-            latest_mtime,
-            oldest_mtime,
-            entries_count,
-            time.monotonic() - start_time,
+            path=os.path.basename(path),
+            size=total_size,
+            latest_mtime=latest_mtime,
+            oldest_mtime=oldest_mtime,
+            entries_count=entries_count,
+            processing_time=time.monotonic() - start_time,
         )
 
-    def get_subdirs_info(self, dir_path):
+    def get_subdirs_info(self, dir_path: str) -> Generator[DirInfo | None, None, None]:
         try:
             children = [
                 os.path.abspath(os.path.join(dir_path, c))
@@ -148,7 +156,7 @@ class BudgetedDirInfoWalker:
             # Any other permission error should be propagated
             raise
 
-def main():
+def main() -> Never:
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
         "parent_dir",
@@ -181,6 +189,8 @@ def main():
     while True:
         walker = BudgetedDirInfoWalker(args.iops_budget)
         for subdir_info in walker.get_subdirs_info(args.parent_dir):
+            if subdir_info is None:
+                continue
             metrics.TOTAL_SIZE.labels(subdir_info.path).set(subdir_info.size)
             metrics.LATEST_MTIME.labels(subdir_info.path).set(subdir_info.latest_mtime)
             metrics.OLDEST_MTIME.labels(subdir_info.path).set(subdir_info.oldest_mtime)
